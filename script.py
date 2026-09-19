@@ -29,17 +29,28 @@ def take_screenshot():
         browser.close()
         return screenshot_bytes
 
-def upload_to_imgur(img_bytes):
-    print("正在將截圖上傳至 Imgur...")
-    url = "https://imgur.com"
-    headers = {"Authorization": f"Client-ID {IMGUR_CLIENT_ID}"}
-    files = {"image": img_bytes}
+def upload_to_telegraph(img_bytes):
+    print("正在將截圖上傳至 Telegraph...")
+    url = "https://telegra.ph"
     
-    response = requests.post(url, headers=headers, files=files)
-    if response.status_dict().get("success") or response.json().get("success"):
-        return response.json()["data"]["link"]
-    else:
-        print(f"Imgur 上傳失敗: {response.text}")
+    # Telegraph 接收 standard file upload 格式
+    files = {"file": ("screenshot.png", img_bytes, "image/png")}
+    
+    response = requests.post(url, files=files)
+    
+    try:
+        res_json = response.json()
+        # 成功時會回傳一個 list，裡面包含 src 路徑
+        if isinstance(res_json, list) and len(res_json) > 0:
+            file_path = res_json[0]["src"]
+            # 拼湊成完整的 HTTPS 直連網址
+            full_url = f"https://telegra.ph{file_path}"
+            return full_url
+        else:
+            print(f"Telegraph 上傳失敗，回傳格式異常: {res_json}")
+            sys.exit(1)
+    except Exception as e:
+        print(f"解析 Telegraph 回傳失敗: {e}, 回傳內容: {response.text}")
         sys.exit(1)
 
 def send_line_image(image_url):
@@ -65,9 +76,13 @@ def send_line_image(image_url):
 if __name__ == "__main__":
     try:
         img_bytes = take_screenshot()
-        public_url = upload_to_imgur(img_bytes)
+        # 🟢 改呼叫新方法，不需要傳入任何 Client ID 變數
+        public_url = upload_to_telegraph(img_bytes) 
         print(f"圖片直連網址: {public_url}")
         send_line_image(public_url)
+        print("任務成功完成！")
+    except Exception as e:
+        print(f"執行發生錯誤: {e}")
         print("任務成功完成！")
     except Exception as e:
         print(f"執行發生錯誤: {e}")
