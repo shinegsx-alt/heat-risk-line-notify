@@ -5,7 +5,7 @@ import requests
 # 從環境變數讀取敏感憑證
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_TO_ID = os.environ.get("LINE_TO_ID")
-TARGET_URL = "https://example.com"  # ◀◀ 更改為你要截圖的網頁網址
+TARGET_URL = "https://hiosha.osha.gov.tw/content/info/heat1.aspx"  # ◀◀ 更改為你要截圖的網頁網址
 
 def get_screenshot_via_api():
     print(f"正在透過免費 API 擷取網頁: {TARGET_URL} ...")
