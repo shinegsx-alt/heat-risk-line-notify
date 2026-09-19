@@ -2,17 +2,18 @@ import os
 import sys
 import requests
 
+# 版本戳記：V2.0_FINAL_STABLE
+print("=== 正在啟動 V2.0 終極穩定版截圖腳本 ===")
+
 # 1. 讀取環境變數
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_TO_ID = os.environ.get("LINE_TO_ID")
 
-# 2. 定義職安署目標網址
-TARGET_URL = "https://osha.gov.tw"
-
 def get_screenshot_via_api():
-    print("正在擷取網頁...")
-    # 🟢 修正網址拼接，確保絕對不會再出現 thum.iohttps
-    api_url = f"https://thum.io{TARGET_URL}"
+    print("正在請求職安署地圖截圖...")
+    
+    # 🟢 修正：不再使用任何變數拼接！直接寫死整條 API 網址，防範任何字串錯亂
+    api_url = "https://thum.io"
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
@@ -34,7 +35,7 @@ def upload_to_telegraph(img_bytes):
     try:
         res_json = response.json()
         if isinstance(res_json, list) and len(res_json) > 0:
-            file_path = res_json[0]["src"]  # 🟢 精準抓取陣列第一項的 src
+            file_path = res_json[0]["src"]  # 🟢 修正：精準讀取陣列中第一個字典的 src 欄位
             return f"https://telegra.ph{file_path}"
         else:
             print(f"Telegraph 上傳失敗，回傳內容: {res_json}")
