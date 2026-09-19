@@ -25,9 +25,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    # 🔴 請將原本這步，替換成下面這段有帶參數的版本：
     - name: 安裝 Playwright 瀏覽器核心
       run: |
-        playwright install chromium --with-deps
+        # 只安裝 chromium 核心，並只安裝其必要的系統依賴，大幅縮短時間
+        python -m playwright install chromium --with-deps
 
     - name: 執行截圖發送腳本
       env:
