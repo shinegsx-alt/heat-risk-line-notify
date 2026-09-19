@@ -7,8 +7,11 @@ on:
 
 jobs:
   run-bot:
-    # 這裡用 latest 或 22.04 都可以，我們直接在前面把漏洞補上
     runs-on: ubuntu-latest
+    
+    # 🟢 關鍵修正：直接指定微軟官方 Playwright 容器（已內建所有瀏覽器與相依環境）
+    container:
+      image: ://microsoft.com
 
     steps:
     - name: 複製專案原始碼
@@ -19,33 +22,15 @@ jobs:
       with:
         python-version: '3.10'
 
-    # 🟢 核心修正：利用 equivs 建立一個「假的 libasound2」套件裝進系統裡
-    - name: 破解 libasound2 遺失問題
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y equivs
-        
-        # 建立一個假的套件設定檔
-        echo "Section: misc" > libasound2-dummy
-        echo "Priority: optional" >> libasound2-dummy
-        echo "Standards-Version: 3.9.2" >> libasound2-dummy
-        echo "Package: libasound2" >> libasound2-dummy
-        echo "Version: 9.9.9" >> libasound2-dummy
-        echo "Description: Dummy package for libasound2 to bypass playwright check" >> libasound2-dummy
-        
-        # 編譯並安裝這個假套件
-        equivs-build libasound2-dummy
-        sudo dpkg -i libasound2-*.deb
-
     - name: 安裝 Python 依賴套件
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    # 🟢 修正：因為 Docker 容器內已經有完整環境，只要單純下載 chromium 即可（免去 --with-deps）
     - name: 安裝 Playwright 瀏覽器核心
       run: |
-        # 此時系統裡已經有了「假的 libasound2」，Playwright 將能順利通關
-        python -m playwright install chromium --with-deps
+        python -m playwright install chromium
 
     - name: 執行截圖發送腳本
       env:
