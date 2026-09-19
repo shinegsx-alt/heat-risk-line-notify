@@ -1,0 +1,38 @@
+name: Scheduled Web Screenshot to LINE
+
+on:
+  schedule:
+    # 這裡使用 Cron 表達式。注意：GitHub Actions 統一使用 UTC 時間。
+    # 範例：若想在台灣時間 (GMT+8) 每天早上 08:30 發送，需減去 8 小時 = UTC 00:30
+    - cron: '30 0 * * *'
+  workflow_dispatch: # 允許手動點擊按鈕立即測試執行
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 複製專案原始碼
+      uses: actions/checkout@v4
+
+    - name: 設定 Python 環境
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: 安裝 Python 依賴套件
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: 安裝 Playwright 瀏覽器核心
+      run: |
+        playwright install chromium --with-deps
+
+    - name: 執行截圖發送腳本
+      env:
+        # 將設定在 GitHub 上的秘密權杖轉為環境變數讓 Python 讀取
+        IMGUR_CLIENT_ID: ${{ secrets.IMGUR_CLIENT_ID }}
+        LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+        LINE_TO_ID: ${{ secrets.LINE_TO_ID }}
+      run: python script.py
