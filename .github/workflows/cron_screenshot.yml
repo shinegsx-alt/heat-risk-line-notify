@@ -23,6 +23,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
+    # 🟢 檢查機制：在執行前強製印出腳本內容，確保更新成功
+    - name: 檢查當前腳本版本
+      run: cat script.py
+
     - name: 執行截圖發送腳本
       env:
         LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
