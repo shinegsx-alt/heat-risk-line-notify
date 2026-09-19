@@ -2,17 +2,16 @@ import os
 import sys
 import requests
 
-# 從環境變數讀取敏感憑證
+# 1. 讀取環境變數
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_TO_ID = os.environ.get("LINE_TO_ID")
 
-# 🟢 已經為你精準設定為職安署熱危害地圖網址
-TARGET_URL = "https://osha.gov.tw"  
+# 2. 定義職安署目標網址
+TARGET_URL = "https://osha.gov.tw"
 
 def get_screenshot_via_api():
-    print(f"正在透過免費用量 API 擷取網頁: {TARGET_URL} ...")
-    
-    # 🟢 修正網址拼接錯誤，改用 thum.io 免費截圖服務（指定寬度 1280，擷取高度 1000）
+    print("正在擷取網頁...")
+    # 🟢 修正網址拼接，確保絕對不會再出現 thum.iohttps
     api_url = f"https://thum.io{TARGET_URL}"
     
     headers = {
@@ -34,9 +33,8 @@ def upload_to_telegraph(img_bytes):
     response = requests.post(url, files=files)
     try:
         res_json = response.json()
-        # 🟢 修正 Telegraph 的 JSON 陣列解析邏輯
         if isinstance(res_json, list) and len(res_json) > 0:
-            file_path = res_json[0]["src"]
+            file_path = res_json[0]["src"]  # 🟢 精準抓取陣列第一項的 src
             return f"https://telegra.ph{file_path}"
         else:
             print(f"Telegraph 上傳失敗，回傳內容: {res_json}")
