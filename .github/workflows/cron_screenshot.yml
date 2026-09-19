@@ -2,14 +2,13 @@ name: Scheduled Web Screenshot to LINE
 
 on:
   schedule:
-    # 這裡使用 Cron 表達式。注意：GitHub Actions 統一使用 UTC 時間。
-    # 範例：若想在台灣時間 (GMT+8) 每天早上 08:30 發送，需減去 8 小時 = UTC 00:30
     - cron: '30 0 * * *'
   workflow_dispatch: # 允許手動點擊按鈕立即測試執行
 
 jobs:
   run-bot:
-    runs-on: ubuntu-latest
+    # 🟢 修正關鍵：將 ubuntu-latest 改為指定 ubuntu-22.04
+    runs-on: ubuntu-22.04
 
     steps:
     - name: 複製專案原始碼
@@ -25,25 +24,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
 
-    # 🟢 修正：先在 Ubuntu 系統內建立軟連結，並改為直接下載
+    # 🟢 修正：在穩定的 22.04 環境下，直接安全地安裝系統依賴與瀏覽器
     - name: 安裝 Playwright 瀏覽器核心
       run: |
-        # 1. 先安裝新版的音訊庫
-        sudo apt-get update && sudo apt-get install -y libasound2t64
-        
-        # 2. 建立一個虛擬的軟連結，騙過舊版 Playwright 的檢查
-        sudo ln -s /usr/lib/x86_64-linux-gnu/libasound.so.2 /usr/lib/x86_64-linux-gnu/libasound2
-        
-        # 3. 升級本機的 playwright 套件，確保核心與腳本同步
-        python -m pip install --upgrade playwright
-        
-        # 4. 只單純下載 chromium 核心（不安裝多餘的底層依賴）
-        python -m playwright install chromium
+        python -m playwright install chromium --with-deps
 
     - name: 執行截圖發送腳本
       env:
-        # 將設定在 GitHub 上的秘密權杖轉為環境變數讓 Python 讀取
-        IMGUR_CLIENT_ID: ${{ secrets.IMGUR_CLIENT_ID }}
         LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
         LINE_TO_ID: ${{ secrets.LINE_TO_ID }}
       run: python script.py
