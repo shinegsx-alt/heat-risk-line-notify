@@ -28,7 +28,13 @@ jobs:
         run: |
           pip install -r requirements.txt
           playwright install --with-deps chromium
-
+      - name: 診斷連線(暫時)確認是否連得到目標網站
+        run: |
+          echo "GitHub Actions runner 對外 IP:"
+          curl -s https://api.ipify.org
+          echo
+          echo "測試連線 hiosha.osha.gov.tw:"
+          curl -v --max-time 15 https://hiosha.osha.gov.tw/content/info/heat1.aspx -o /dev/null || echo "連線失敗，離開碼: $?"
       - name: 查詢並截圖熱危害風險等級
         id: capture
         env:
