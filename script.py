@@ -35,7 +35,7 @@ def send_line_message(user_id: str, message: str) -> requests.Response:
 
 
 if __name__ == "__main__":
-    target_user_id = "目標使用者的_USER_ID"
+    target_user_id = "U8c8a18314ce78ae7a890cc068e22b592"
     text = "這是一則測試訊息！"
 
     resp = send_line_message(target_user_id, text)
