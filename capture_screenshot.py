@@ -31,7 +31,10 @@ def capture_heat_risk_screenshot(address: str) -> str:
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport={"width": 1024, "height": 900})
-        page.goto(HEAT_PAGE_URL, wait_until="networkidle")
+        # 這個網站的時鐘每秒都會打一次 API 更新畫面，網路連線永遠不會「idle」，
+        # 所以不能用 wait_until="networkidle"，改成等查詢欄位真的出現在畫面上
+        page.goto(HEAT_PAGE_URL, wait_until="domcontentloaded")
+        page.wait_for_selector("#ContentPlaceHolder1_txtAddress", state="visible", timeout=30000)
 
         page.fill("#ContentPlaceHolder1_txtAddress", address)
         page.click('input[onclick="QueryGeolocation();"]')
