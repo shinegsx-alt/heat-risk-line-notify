@@ -1,47 +1,58 @@
 """
-LINE Messaging API - 推播訊息 (Push Message) 範例
+查詢熱危害風險等級並截圖，存到 screenshots/ 資料夾。
+截圖之後會由 GitHub Actions 的步驟 commit + push 回 repo，
+再讓 send_line_image.py 用 raw.githubusercontent.com 的網址推播給 LINE。
 
-使用前準備：
-1. 到 LINE Developers Console (https://developers.line.biz/) 建立 Messaging API Channel
-2. 取得 Channel Access Token (長期權杖，在 Channel 設定的 "Messaging API" 分頁產生)
-3. 取得目標使用者的 User ID (使用者需先加該官方帳號為好友；
-   User ID 可透過 Webhook 事件、或 LINE Login 取得)
+環境變數：
+    HEAT_ADDRESS   要查詢的地區，例如 "台北市信義區"（預設見下方）
 
-安裝依賴：
-    pip install requests
+輸出：
+    在 GitHub Actions 環境下，會把截圖的相對路徑寫進 $GITHUB_OUTPUT 的 `path`
+    本機執行則直接印在終端機
 """
 
-import requests
+import os
+import sys
+from datetime import datetime, timezone
 
-CHANNEL_ACCESS_TOKEN = "HFhEvnFz10SgLQFR8EzFg+L2j6qkrN1baY6mkEugbUg4F+OJ/YG/2X/7gVUf4LqMH4mA5jzXp/qomyNNjKTnTk7hizCnVvL6g+HlWzlt5k/cYQBDPi27dHdFf+88NNu7tQwz4squkbMd9h6sU5FDZQdB04t89/1O/w1cDnyilFU="
-LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
+from playwright.sync_api import sync_playwright
+
+HEAT_ADDRESS = os.environ.get("HEAT_ADDRESS", "台北市信義區")
+HEAT_PAGE_URL = "https://hiosha.osha.gov.tw/content/info/heat1.aspx"
+SCREENSHOT_DIR = "screenshots"
 
 
-def send_line_message(user_id: str, message: str) -> requests.Response:
-    """傳送純文字訊息給指定的 LINE user_id"""
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
-    }
-    payload = {
-        "to": user_id,
-        "messages": [
-            {"type": "text", "text": message}
-        ],
-    }
+def capture_heat_risk_screenshot(address: str) -> str:
+    """查詢指定地區的熱危害風險等級，截圖存檔，回傳相對路徑"""
+    os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    save_path = os.path.join(SCREENSHOT_DIR, f"heat_risk_{timestamp}.png")
 
-    response = requests.post(LINE_PUSH_URL, headers=headers, json=payload)
-    return response
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page(viewport={"width": 1024, "height": 900})
+        page.goto(HEAT_PAGE_URL, wait_until="networkidle")
+
+        page.fill("#ContentPlaceHolder1_txtAddress", address)
+        page.click('input[onclick="QueryGeolocation();"]')
+
+        # 等查詢結果的 AJAX 回來並畫完圖表
+        page.wait_for_timeout(2000)
+
+        # .heat-cal 這個區塊包含查詢表單與風險等級量表，取第一個(桌面版)
+        result_block = page.locator(".heat-cal").first
+        result_block.screenshot(path=save_path)
+
+        browser.close()
+
+    return save_path.replace("\\", "/")
 
 
 if __name__ == "__main__":
-    target_user_id = "U8c8a18314ce78ae7a890cc068e22b592"
-    text = "這是一則測試訊息！"
+    path = capture_heat_risk_screenshot(HEAT_ADDRESS)
+    print(f"截圖完成: {path}")
 
-    resp = send_line_message(target_user_id, text)
-
-    if resp.status_code == 200:
-        print("訊息傳送成功")
-    else:
-        print(f"傳送失敗，狀態碼: {resp.status_code}")
-        print(resp.text)
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as f:
+            f.write(f"path={path}\n")
