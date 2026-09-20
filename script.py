@@ -1,92 +1,47 @@
-import os
-import sys
+"""
+LINE Messaging API - 推播訊息 (Push Message) 範例
+
+使用前準備：
+1. 到 LINE Developers Console (https://developers.line.biz/) 建立 Messaging API Channel
+2. 取得 Channel Access Token (長期權杖，在 Channel 設定的 "Messaging API" 分頁產生)
+3. 取得目標使用者的 User ID (使用者需先加該官方帳號為好友；
+   User ID 可透過 Webhook 事件、或 LINE Login 取得)
+
+安裝依賴：
+    pip install requests
+"""
+
 import requests
 
-print("=== 正在啟動 V5.0 防火牆破解偽裝版腳本 ===")
+CHANNEL_ACCESS_TOKEN = "HFhEvnFz10SgLQFR8EzFg+L2j6qkrN1baY6mkEugbUg4F+OJ/YG/2X/7gVUf4LqMH4mA5jzXp/qomyNNjKTnTk7hizCnVvL6g+HlWzlt5k/cYQBDPi27dHdFf+88NNu7tQwz4squkbMd9h6sU5FDZQdB04t89/1O/w1cDnyilFU="
+LINE_PUSH_URL = "https://api.line.me/v2/bot/message/push"
 
-# 1. 讀取 LINE 的環境變數密鑰
-LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
-LINE_TO_ID = os.environ.get("LINE_TO_ID")
 
-def send_line_flex():
-    screenshot_url = "https://thum.io"
-    
-    url = "https://line.me"
-    
-    # 🟢 破解關鍵：加入完整的瀏覽器 User-Agent 與認證標頭，不讓 OpenResty 發現是 GitHub
+def send_line_message(user_id: str, message: str) -> requests.Response:
+    """傳送純文字訊息給指定的 LINE user_id"""
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}",
-        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Accept": "application/json, text/plain, */*",
-        "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8,en;q=0.7",
-        "Origin": "https://line.biz"
+        "Authorization": f"Bearer {CHANNEL_ACCESS_TOKEN}",
     }
-    
     payload = {
-        "to": LINE_TO_ID,
+        "to": user_id,
         "messages": [
-            {
-                "type": "flex",
-                "altText": "今日職安署熱危害預防地圖",
-                "contents": {
-                    "type": "bubble",
-                    "hero": {
-                        "type": "image",
-                        "url": screenshot_url,
-                        "size": "full",
-                        "aspectRatio": "4:3",
-                        "aspectMode": "cover",
-                        "action": {
-                            "type": "uri",
-                            "label": "點擊看大圖",
-                            "uri": screenshot_url
-                        }
-                    },
-                    "body": {
-                        "type": "box",
-                        "layout": "vertical",
-                        "contents": [
-                            {
-                                "type": "text",
-                                "text": "🌞 今日高氣溫戶外作業熱危害地圖",
-                                "weight": "bold",
-                                "size": "md"
-                            }
-                        ]
-                    },
-                    "footer": {
-                        "type": "box",
-                        "layout": "vertical",
-                        "spacing": "sm",
-                        "contents": [
-                            {
-                                "type": "button",
-                                "style": "link",
-                                "height": "sm",
-                                "action": {
-                                    "type": "uri",
-                                    "label": "前往職安署官網",
-                                    "uri": "https://osha.gov.tw"
-                                }
-                            }
-                        ]
-                    }
-                }
-            }
-        ]
+            {"type": "text", "text": message}
+        ],
     }
-    
-    print("正在偽裝成標準瀏覽器發送請求...")
-    # 🟢 設定 timeout 避免卡死
-    res = requests.post(url, headers=headers, json=payload, timeout=15) 
-    print(f"LINE 伺服器回應狀態碼: {res.status_code}")
-    
-    if res.status_code == 200:
-        print("任務成功完成！LINE 已經順利放行！")
-    else:
-        print(f"發送失敗，詳細錯誤原因: {res.text}")
-        sys.exit(1)
+
+    response = requests.post(LINE_PUSH_URL, headers=headers, json=payload)
+    return response
+
 
 if __name__ == "__main__":
-    send_line_flex()
+    target_user_id = "目標使用者的_USER_ID"
+    text = "這是一則測試訊息！"
+
+    resp = send_line_message(target_user_id, text)
+
+    if resp.status_code == 200:
+        print("訊息傳送成功")
+    else:
+        print(f"傳送失敗，狀態碼: {resp.status_code}")
+        print(resp.text)
