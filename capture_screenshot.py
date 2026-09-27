@@ -1,0 +1,66 @@
+"""
+查詢熱危害風險等級並截圖，存到 screenshots/ 資料夾。
+截圖之後會由 GitHub Actions 的步驟 commit + push 回 repo，
+再讓 send_line_image.py 用 raw.githubusercontent.com 的網址推播給 LINE。
+
+環境變數：
+    HEAT_ADDRESS   要查詢的地區，例如 "台北市信義區"（預設見下方）
+
+輸出：
+    在 GitHub Actions 環境下，會把截圖的相對路徑寫進 $GITHUB_OUTPUT 的 `path`
+    本機執行則直接印在終端機
+"""
+
+import os
+import sys
+from datetime import datetime, timezone
+
+from playwright.sync_api import sync_playwright
+
+HEAT_ADDRESS = os.environ.get("HEAT_ADDRESS", "台北市信義區")
+HEAT_PAGE_URL = "https://hiosha.osha.gov.tw/content/info/heat1.aspx"
+SCREENSHOT_DIR = "screenshots"
+
+
+def capture_heat_risk_screenshot(address: str) -> str:
+    """查詢指定地區的熱危害風險等級，截圖存檔，回傳相對路徑"""
+    os.makedirs(SCREENSHOT_DIR, exist_ok=True)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    save_path = os.path.join(SCREENSHOT_DIR, f"heat_risk_{timestamp}.png")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        # 用 iPhone 13 的裝置設定（尺寸、User-Agent、觸控）模擬手機瀏覽，
+        # 這個網站會依螢幕寬度切換成手機版面（輸入框/按鈕的 id 也不同，見下方 Phone 版選擇器）
+        iphone = p.devices["iPhone 13"]
+        page = browser.new_page(**iphone)
+
+        # 這個網站的時鐘每秒都會打一次 API 更新畫面，網路連線永遠不會「idle」，
+        # 所以不能用 wait_until="networkidle"，改成等查詢欄位真的出現在畫面上
+        page.goto(HEAT_PAGE_URL, wait_until="domcontentloaded")
+        page.wait_for_selector("#ContentPlaceHolder1_txtAddressPhone", state="visible", timeout=30000)
+
+        page.fill("#ContentPlaceHolder1_txtAddressPhone", address)
+        page.click('input[onclick="QueryGeolocationPhone();"]')
+
+        # 等查詢結果的 AJAX 回來並畫完圖表
+        page.wait_for_timeout(2000)
+
+        # .heat-cal 這個區塊包含查詢表單與風險等級量表（手機/桌面共用同一個容器，
+        # 由 CSS media query 切換顯示哪一版，手機寬度下會自動只顯示手機版內容）
+        result_block = page.locator(".heat-cal").first
+        result_block.screenshot(path=save_path)
+
+        browser.close()
+
+    return save_path.replace("\\", "/")
+
+
+if __name__ == "__main__":
+    path = capture_heat_risk_screenshot(HEAT_ADDRESS)
+    print(f"截圖完成: {path}")
+
+    github_output = os.environ.get("GITHUB_OUTPUT")
+    if github_output:
+        with open(github_output, "a", encoding="utf-8") as f:
+            f.write(f"path={path}\n")

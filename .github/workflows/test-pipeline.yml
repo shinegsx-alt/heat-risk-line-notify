@@ -1,0 +1,53 @@
+name: 測試流程(截圖->push->LINE推播)
+
+on:
+  workflow_dispatch: {}   # 只能手動觸發，不影響正式排程
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install --with-deps chromium
+
+      - name: 截圖測試網站(不受政府網站IP封鎖影響)
+        id: capture
+        run: python capture_screenshot_test.py
+
+      - name: 只保留最近 30 張截圖，避免 repo 無限膨脹
+        run: |
+          cd screenshots
+          ls -t | tail -n +31 | xargs -r rm -f
+
+      - name: Commit 並 push 截圖
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add screenshots
+          git commit -m "測試截圖 ${{ steps.capture.outputs.path }}" || echo "無變更可 commit"
+          git push
+
+      - name: 等待截圖網址在 GitHub 上生效
+        env:
+          IMAGE_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/${{ steps.capture.outputs.path }}
+        run: curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors -o /dev/null "$IMAGE_URL"
+
+      - name: 用 LINE 推播圖片
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          IMAGE_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/${{ steps.capture.outputs.path }}
+        run: python send_line_image.py
