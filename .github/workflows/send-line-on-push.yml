@@ -37,14 +37,16 @@ jobs:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
           LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
           REPO: ${{ github.repository }}
-          REF: ${{ github.ref_name }}
+          SHA: ${{ github.sha }}
           FILES: ${{ steps.files.outputs.files }}
         run: |
           IFS='|' read -ra FILE_ARR <<< "$FILES"
           for f in "${FILE_ARR[@]}"; do
             [ -z "$f" ] && continue
             encoded=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$f")
-            url="https://raw.githubusercontent.com/${REPO}/${REF}/${encoded}"
+            # 用「commit SHA」而不是分支名稱組網址：同一個 SHA 底下的檔案內容永遠不變，
+            # 不會像用分支名稱那樣，同檔名被覆蓋推送時撞到 CDN 快取抓到舊圖
+            url="https://raw.githubusercontent.com/${REPO}/${SHA}/${encoded}"
             echo "等待網址生效: $url"
             curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors -o /dev/null "$url"
             echo "推播: $url"
