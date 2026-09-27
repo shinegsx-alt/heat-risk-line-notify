@@ -1,0 +1,52 @@
+name: 新截圖推播到LINE群組
+
+on:
+  push:
+    paths:
+      - "screenshots/**"
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: 找出這次 push 新增/修改的截圖檔案
+        id: files
+        run: |
+          files=$(git diff --name-only HEAD~1 HEAD -- 'screenshots/*.jpg' 'screenshots/*.jpeg' 'screenshots/*.png' | tr '\n' '|')
+          echo "files=$files" >> "$GITHUB_OUTPUT"
+          echo "本次要推播的檔案: $files"
+
+      - name: 逐一等待網址生效並推播到 LINE
+        env:
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          FILES: ${{ steps.files.outputs.files }}
+        run: |
+          IFS='|' read -ra FILE_ARR <<< "$FILES"
+          for f in "${FILE_ARR[@]}"; do
+            [ -z "$f" ] && continue
+            encoded=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$f")
+            url="https://raw.githubusercontent.com/${REPO}/${REF}/${encoded}"
+            echo "等待網址生效: $url"
+            curl --fail --silent --show-error --retry 10 --retry-delay 3 --retry-all-errors -o /dev/null "$url"
+            echo "推播: $url"
+            IMAGE_URL="$url" python send_line_image.py
+          done
