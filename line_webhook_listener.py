@@ -31,22 +31,33 @@ app = Flask(__name__)
 _running = threading.Lock()  # 避免同時觸發兩次截圖流程，重複的觸發會被忽略
 
 
+LOG_DIR = REPO_DIR / "logs"
+
+
 def run_daily_task():
     if not _running.acquire(blocking=False):
         print("已經有一個任務在執行中，這次觸發被忽略")
         return
     try:
         print(f"[{datetime.now()}] 開始執行 daily_run.py ...")
-        # 用獨立的新主控台視窗執行（而不是用管線捕捉輸出），
-        # 避免從 Flask 背景執行緒用管線重導向啟動 Playwright 瀏覽器時，
-        # Windows 底層巢狀管線+無主控台的情境下出現奇怪的進程建立失敗
-        process = subprocess.Popen(
-            [sys.executable, str(REPO_DIR / "daily_run.py")],
-            cwd=REPO_DIR,
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
+        LOG_DIR.mkdir(exist_ok=True)
+        log_path = LOG_DIR / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        # 把子程序輸出導向真正的檔案（而不是管線或新主控台視窗），
+        # 這樣不管執行結果如何都能回頭查看發生了什麼事
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            process = subprocess.Popen(
+                [sys.executable, str(REPO_DIR / "daily_run.py")],
+                cwd=REPO_DIR,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
+            process.wait()
+        print(
+            f"[{datetime.now()}] daily_run.py 執行完畢，"
+            f"returncode={process.returncode}，log: {log_path}"
         )
-        process.wait()
-        print(f"[{datetime.now()}] daily_run.py 執行完畢，returncode={process.returncode}")
+        if process.returncode != 0:
+            print(f"發生錯誤！請查看 log 檔案內容: {log_path}")
     finally:
         _running.release()
 
