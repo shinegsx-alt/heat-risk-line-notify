@@ -14,6 +14,7 @@
     python daily_run.py
 """
 
+import os
 import subprocess
 import sys
 import time
@@ -63,6 +64,30 @@ def capture_one(browser, iphone_device: dict, address: str, save_path: Path):
         result_block.screenshot(path=str(save_path), type="jpeg", quality=90)
     finally:
         page.close()
+
+
+def print_diagnostics():
+    exe_path = (
+        Path.home() / "AppData/Local/ms-playwright/chromium_headless_shell-1243"
+        "/chrome-headless-shell-win64/chrome-headless-shell.exe"
+    )
+    print("---- 診斷資訊 ----")
+    print(f"sys.executable = {sys.executable}")
+    print(f"os.getcwd() = {os.getcwd()}")
+    print(f"__file__ 解析出的 REPO_DIR = {REPO_DIR}")
+    print(f"USERPROFILE = {os.environ.get('USERPROFILE')}")
+    print(f"LOCALAPPDATA = {os.environ.get('LOCALAPPDATA')}")
+    print(f"APPDATA = {os.environ.get('APPDATA')}")
+    print(f"PLAYWRIGHT_BROWSERS_PATH = {os.environ.get('PLAYWRIGHT_BROWSERS_PATH')!r}")
+    print(f"exe_path (Path.home()推算) = {exe_path}")
+    print(f"exe_path 存在(os.path.exists) = {exe_path.exists()}")
+    try:
+        with open(exe_path, "rb") as f:
+            f.read(4)
+        print("exe_path 可以直接開啟讀取: 是")
+    except Exception as e:
+        print(f"exe_path 可以直接開啟讀取: 否，錯誤: {e}")
+    print("-------------------")
 
 
 def launch_chromium_with_retry(p, attempts: int = 5, delay: float = 2.0):
@@ -160,6 +185,7 @@ def wait_for_workflow_completion(sha: str, timeout: int = 300, poll_interval: in
 
 
 if __name__ == "__main__":
+    print_diagnostics()
     saved_paths = capture_all()
     pushed_sha = git_commit_and_push(saved_paths)
     if pushed_sha:
