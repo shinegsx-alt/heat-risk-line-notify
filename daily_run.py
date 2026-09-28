@@ -65,12 +65,28 @@ def capture_one(browser, iphone_device: dict, address: str, save_path: Path):
         page.close()
 
 
+def launch_chromium_with_retry(p, attempts: int = 5, delay: float = 2.0):
+    """有時候防毒軟體即時防護會在瞬間鎖住/掃描 chrome-headless-shell.exe，
+    導致 Playwright 誤判「執行檔不存在」——這種情況通常隔幾秒重試就會過，
+    所以失敗就等一下重試，而不是直接讓整個流程掛掉。"""
+    last_error = None
+    for i in range(1, attempts + 1):
+        try:
+            return p.chromium.launch()
+        except Exception as e:
+            last_error = e
+            print(f"啟動瀏覽器失敗(第 {i}/{attempts} 次): {e}")
+            if i < attempts:
+                time.sleep(delay)
+    raise last_error
+
+
 def capture_all() -> list[Path]:
     SCREENSHOT_DIR.mkdir(exist_ok=True)
     date_str = datetime.now().strftime("%Y%m%d")
     saved = []
     with sync_playwright() as p:
-        browser = p.chromium.launch()
+        browser = launch_chromium_with_retry(p)
         iphone_device = p.devices["iPhone 13"]
         for display_name, query_address in LOCATIONS:
             save_path = SCREENSHOT_DIR / f"{date_str}-{display_name}.jpg"
