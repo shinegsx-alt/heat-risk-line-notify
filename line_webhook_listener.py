@@ -1,15 +1,10 @@
 """
 常駐監聽 LINE Webhook：群組裡收到含有「熱危害」關鍵字的訊息時，
-放一個「觸發旗標檔案」（trigger.flag），實際執行截圖的工作交給
-另一支獨立執行的 trigger_watcher.py 去做。
+觸發本機的 daily_run.py（截圖 7 個鄉鎮市 + push 到 GitHub），
+push 之後由 GitHub Actions 自動把截圖推播回 LINE 群組
+（見 .github/workflows/send-line-on-push.yml）。
 
-這樣分成兩支程式是因為：如果讓這支網路監聽程式直接呼叫 daily_run.py
-去啟動瀏覽器，會被本機的防護軟體判定成可疑行為模式（網路服務收到請求後
-啟動瀏覽器）而攔截，導致 Playwright 誤判瀏覽器執行檔不存在。分成兩支、
-讓截圖流程由使用者自己啟動的獨立程式（trigger_watcher.py）去執行，
-信任層級跟你自己手動打指令一樣，就不會被攔截。
-
-這支程式本身不需要任何 LINE token——它只負責「聽到關鍵字就放旗標」，
+這支程式本身不需要任何 LINE token——它只負責「聽到關鍵字就觸發本機截圖流程」，
 真正推播圖片給 LINE 的動作是 GitHub Actions 那邊用 repo 的 Secrets 做的。
 
 用法：
@@ -19,10 +14,11 @@
 並在 LINE Developers Console 把 Webhook URL 設成該網址 + /callback。
 建議申請 ngrok 的免費「固定網域」，這樣網址就不會每次重啟都變動，
 不用每次都回去 LINE Developers Console 改設定。
-
-另外要記得同時執行 trigger_watcher.py，這支程式才會真的去截圖。
 """
 
+import subprocess
+import sys
+import threading
 from datetime import datetime
 from pathlib import Path
 
@@ -30,9 +26,37 @@ from flask import Flask, request
 
 REPO_DIR = Path(__file__).resolve().parent
 TRIGGER_KEYWORD = "熱危害"
-TRIGGER_FLAG = REPO_DIR / "trigger.flag"
+LOG_DIR = REPO_DIR / "logs"
 
 app = Flask(__name__)
+_running = threading.Lock()  # 避免同時觸發兩次截圖流程，重複的觸發會被忽略
+
+
+def run_daily_task():
+    if not _running.acquire(blocking=False):
+        print("已經有一個任務在執行中，這次觸發被忽略")
+        return
+    try:
+        print(f"[{datetime.now()}] 開始執行 daily_run.py ...")
+        LOG_DIR.mkdir(exist_ok=True)
+        log_path = LOG_DIR / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        # 把子程序輸出導向真正的檔案，這樣不管執行結果如何都能回頭查看發生了什麼事
+        with open(log_path, "w", encoding="utf-8") as log_file:
+            process = subprocess.Popen(
+                [sys.executable, str(REPO_DIR / "daily_run.py")],
+                cwd=REPO_DIR,
+                stdout=log_file,
+                stderr=subprocess.STDOUT,
+            )
+            process.wait()
+        print(
+            f"[{datetime.now()}] daily_run.py 執行完畢，"
+            f"returncode={process.returncode}，log: {log_path}"
+        )
+        if process.returncode != 0:
+            print(f"發生錯誤！請查看 log 檔案內容: {log_path}")
+    finally:
+        _running.release()
 
 
 @app.route("/callback", methods=["POST"])
@@ -47,8 +71,8 @@ def callback():
 
         text = message.get("text", "")
         if TRIGGER_KEYWORD in text:
-            print(f"[{datetime.now()}] 偵測到關鍵字「{TRIGGER_KEYWORD}」，放置觸發旗標")
-            TRIGGER_FLAG.touch()
+            print(f"偵測到關鍵字「{TRIGGER_KEYWORD}」，觸發截圖流程")
+            threading.Thread(target=run_daily_task, daemon=True).start()
 
     return "OK", 200
 
@@ -60,5 +84,4 @@ def health():
 
 if __name__ == "__main__":
     print(f"監聽關鍵字「{TRIGGER_KEYWORD}」，等待 LINE Webhook 呼叫 /callback ...")
-    print("記得同時執行 trigger_watcher.py，這支程式只負責放旗標，不會真的截圖")
     app.run(host="0.0.0.0", port=5000)

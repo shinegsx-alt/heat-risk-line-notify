@@ -3,4 +3,3 @@
 *.xlsm
 .claude/
 logs/
-trigger.flag
