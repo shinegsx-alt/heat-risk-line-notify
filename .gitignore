@@ -4,3 +4,5 @@
 .claude/
 logs/
 ngrok_domain.txt
+line_token.txt
+line_groups.json

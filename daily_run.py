@@ -6,7 +6,7 @@
 流程：
 1. 對 LOCATIONS 裡的每個地點截圖（iPhone 版面），存成 screenshots/<日期>-<地點>.jpg
 2. git add + commit + push 回 GitHub（如果有 heat_result.txt——由 line_webhook_listener.py
-   先跑 heat_6h_max.py 產生——也一起 commit）
+   先跑 heat_6h_max.py 產生——以及觸發群組的 line_target.txt 也一起 commit）
 3. push 之後，GitHub Actions 的 .github/workflows/send-line-on-push.yml
    會自動偵測到新截圖，逐一推播到 LINE 群組，最後推播 heat_result.txt 的等級文字
    （那一段是在雲端執行，因為只是連 github.com/line.me，不會被政府網站的防火牆擋到）
@@ -46,6 +46,8 @@ LOCATIONS = [
 SCREENSHOT_DIR = REPO_DIR / "screenshots"
 # 三個群組未來 6 小時最高等級的結果文字（由 line_webhook_listener.py 執行 heat_6h_max.py 產生）
 HEAT_RESULT_PATH = REPO_DIR / "heat_result.txt"
+# 觸發關鍵字的群組 ID（由 line_webhook_listener.py 產生），GitHub Actions 會推播回這個群組
+LINE_TARGET_PATH = REPO_DIR / "line_target.txt"
 
 # winget 裝的 Git 預設路徑；如果之後 'git' 指令本身在 PATH 裡可以用了，
 # 改回 GIT = "git" 也可以
@@ -190,8 +192,9 @@ def wait_for_workflow_completion(sha: str, timeout: int = 300, poll_interval: in
 if __name__ == "__main__":
     print_diagnostics()
     saved_paths = capture_all()
-    if HEAT_RESULT_PATH.exists():
-        saved_paths.append(HEAT_RESULT_PATH)
+    for extra in (HEAT_RESULT_PATH, LINE_TARGET_PATH):
+        if extra.exists():
+            saved_paths.append(extra)
     pushed_sha = git_commit_and_push(saved_paths)
     if pushed_sha:
         wait_for_workflow_completion(pushed_sha)

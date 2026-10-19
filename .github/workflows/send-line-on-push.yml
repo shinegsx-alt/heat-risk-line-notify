@@ -32,10 +32,28 @@ jobs:
           echo "files=$files" >> "$GITHUB_OUTPUT"
           echo "本次要推播的檔案: $files"
 
+      - name: 決定推播對象（觸發關鍵字的群組，沒有就用預設的 LINE_USER_ID）
+        id: target
+        run: |
+          # line_target.txt 由本機 listener 寫入：第一行是群組 ID、第二行是觸發時間。
+          # 只有這次 push 有更新它才採用，否則（例如手動執行 daily_run.py）用預設對象
+          if git diff --name-only HEAD~1 HEAD -- line_target.txt | grep -q .; then
+            to=$(head -n1 line_target.txt | tr -d '\r\n ')
+            # LINE 的 ID 格式：C/R/U 開頭 + 32 個 16 進位字元，不符合就不採用
+            if echo "$to" | grep -Eq '^[CRU][0-9a-f]{32}$'; then
+              echo "to=$to" >> "$GITHUB_OUTPUT"
+              echo "推播到觸發的群組: $to"
+            else
+              echo "line_target.txt 格式不正確，改用預設對象"
+            fi
+          else
+            echo "這次沒有指定推播對象，用預設的 LINE_USER_ID"
+          fi
+
       - name: 逐一等待網址生效並推播到 LINE
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          LINE_USER_ID: ${{ steps.target.outputs.to || secrets.LINE_USER_ID }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
           FILES: ${{ steps.files.outputs.files }}
@@ -56,7 +74,7 @@ jobs:
       - name: 圖片推播完後，推播熱危害等級文字
         env:
           LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
-          LINE_USER_ID: ${{ secrets.LINE_USER_ID }}
+          LINE_USER_ID: ${{ steps.target.outputs.to || secrets.LINE_USER_ID }}
         run: |
           # 只有這次 push 有更新 heat_result.txt 才推播（結果第一行含時間，每次查詢都會不同），
           # 避免只有截圖、沒有重新查詢等級時，把舊的結果再推一次
