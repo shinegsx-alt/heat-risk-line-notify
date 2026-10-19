@@ -1,7 +1,8 @@
 """
 常駐監聽 LINE Webhook：群組裡收到含有「熱危害」關鍵字的訊息時，
-觸發本機的 daily_run.py（截圖 7 個鄉鎮市 + push 到 GitHub），
-push 之後由 GitHub Actions 自動把截圖推播回 LINE 群組
+先執行 heat_6h_max.py（三個群組未來 6 小時最高等級，結果寫進 heat_result.txt），
+再觸發本機的 daily_run.py（截圖 7 個鄉鎮市 + 連同 heat_result.txt push 到 GitHub），
+push 之後由 GitHub Actions 自動把截圖、接著把等級文字推播回 LINE 群組
 （見 .github/workflows/send-line-on-push.yml）。
 
 這支程式本身不需要任何 LINE token——它只負責「聽到關鍵字就觸發本機截圖流程」，
@@ -27,9 +28,32 @@ from flask import Flask, request
 REPO_DIR = Path(__file__).resolve().parent
 TRIGGER_KEYWORD = "熱危害"
 LOG_DIR = REPO_DIR / "logs"
+HEAT_RESULT_PATH = REPO_DIR / "heat_result.txt"
 
 app = Flask(__name__)
 _running = threading.Lock()  # 避免同時觸發兩次截圖流程，重複的觸發會被忽略
+
+
+def run_heat_level(log_file) -> None:
+    """執行 heat_6h_max.py，把結果文字寫進 heat_result.txt；
+    daily_run.py 會把它跟截圖一起 commit，GitHub Actions 推播完圖片後再把這段文字推到群組。
+    查詢失敗就不更新檔案，這次就不會推播文字（截圖照常進行）。"""
+    print(f"[{datetime.now()}] 開始執行 heat_6h_max.py ...")
+    result = subprocess.run(
+        [sys.executable, str(REPO_DIR / "heat_6h_max.py")],
+        cwd=REPO_DIR,
+        capture_output=True,
+        encoding="utf-8",
+        errors="replace",
+    )
+    log_file.write(f"---- heat_6h_max.py (returncode={result.returncode}) ----\n")
+    log_file.write(result.stdout + result.stderr + "\n")
+    log_file.flush()
+    if result.returncode == 0 and result.stdout.strip():
+        HEAT_RESULT_PATH.write_text(result.stdout.strip() + "\n", encoding="utf-8")
+        print(f"熱危害等級結果已寫入 {HEAT_RESULT_PATH.name}")
+    else:
+        print("heat_6h_max.py 執行失敗，這次不推播熱危害等級文字")
 
 
 def run_daily_task():
@@ -37,11 +61,14 @@ def run_daily_task():
         print("已經有一個任務在執行中，這次觸發被忽略")
         return
     try:
-        print(f"[{datetime.now()}] 開始執行 daily_run.py ...")
         LOG_DIR.mkdir(exist_ok=True)
         log_path = LOG_DIR / f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         # 把子程序輸出導向真正的檔案，這樣不管執行結果如何都能回頭查看發生了什麼事
         with open(log_path, "w", encoding="utf-8") as log_file:
+            run_heat_level(log_file)
+            print(f"[{datetime.now()}] 開始執行 daily_run.py ...")
+            log_file.write("---- daily_run.py ----\n")
+            log_file.flush()
             process = subprocess.Popen(
                 [sys.executable, str(REPO_DIR / "daily_run.py")],
                 cwd=REPO_DIR,
