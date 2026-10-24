@@ -1,4 +1,4 @@
-# 一次性設定：註冊 Windows 工作排程器，讓「登入這台電腦」時自動背景執行
+﻿# 一次性設定：註冊 Windows 工作排程器，讓「登入這台電腦」時自動背景執行
 # start_services.ps1（進而啟動 ngrok + line_webhook_listener.py）。
 #
 # !! 只在正式部署的機器上執行這支腳本，不要在開發機上跑 !!

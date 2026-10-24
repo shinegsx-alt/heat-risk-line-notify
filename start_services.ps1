@@ -1,4 +1,4 @@
-# 背景啟動 ngrok + line_webhook_listener.py（不開視窗，輸出導向 logs/ 資料夾）
+﻿# 背景啟動 ngrok + line_webhook_listener.py（不開視窗，輸出導向 logs/ 資料夾）
 # 給開機自動啟動用，也可以手動執行測試。
 #
 # 使用前，要先在這個資料夾建立 ngrok_domain.txt，內容只填一行：你的 ngrok 固定網域
