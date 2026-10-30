@@ -28,6 +28,7 @@ from pathlib import Path
 from flask import Flask, request
 
 import line_groups
+from run_lock import RunLock
 from send_line_text import send_line_text
 
 REPO_DIR = Path(__file__).resolve().parent
@@ -38,7 +39,6 @@ HEAT_RESULT_PATH = REPO_DIR / "heat_result.txt"
 LINE_TARGET_PATH = REPO_DIR / "line_target.txt"
 
 app = Flask(__name__)
-_running = threading.Lock()  # 避免同時觸發兩次截圖流程，重複的觸發會被忽略
 
 
 def run_heat_level(log_file) -> None:
@@ -75,7 +75,9 @@ def notify_busy(target: str) -> None:
 
 
 def run_daily_task(target: str):
-    if not _running.acquire(blocking=False):
+    # 跨程序的鎖：跟每天 07:00 的 morning_run.py 共用，避免兩個截圖流程同時跑
+    lock = RunLock()
+    if not lock.try_acquire():
         print("已經有一個任務在執行中，這次觸發被忽略")
         notify_busy(target)
         return
@@ -107,7 +109,7 @@ def run_daily_task(target: str):
         if process.returncode != 0:
             print(f"發生錯誤！請查看 log 檔案內容: {log_path}")
     finally:
-        _running.release()
+        lock.release()
 
 
 @app.route("/callback", methods=["POST"])
