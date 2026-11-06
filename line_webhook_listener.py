@@ -33,6 +33,8 @@ from send_line_text import send_line_text
 
 REPO_DIR = Path(__file__).resolve().parent
 TRIGGER_KEYWORD = "熱危害"
+# 這些群組打關鍵字不會觸發（用 line_groups.json 對映表裡的群組名稱比對）
+IGNORED_GROUP_NAMES = {"宜陽巡路隊"}
 LOG_DIR = REPO_DIR / "logs"
 HEAT_RESULT_PATH = REPO_DIR / "heat_result.txt"
 # 這次是哪個群組觸發的；daily_run.py 會跟截圖一起 commit，GitHub Actions 就推播回這個群組
@@ -133,6 +135,10 @@ def callback():
             source = event.get("source", {})
             # 群組 → groupId、多人聊天室 → roomId、私訊 → userId，結果就推播回同一個地方
             target = source.get("groupId") or source.get("roomId") or source.get("userId") or ""
+            group_name = line_groups.load_groups().get(source.get("groupId", ""), {}).get("name", "")
+            if group_name in IGNORED_GROUP_NAMES:
+                print(f"「{group_name}」打了關鍵字「{TRIGGER_KEYWORD}」，此群組已設定不觸發，略過")
+                continue
             print(f"偵測到關鍵字「{TRIGGER_KEYWORD}」，觸發截圖流程（推播對象: {target or '預設'}）")
             threading.Thread(target=run_daily_task, args=(target,), daemon=True).start()
 
