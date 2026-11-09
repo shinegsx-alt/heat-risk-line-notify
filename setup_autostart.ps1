@@ -21,7 +21,11 @@ $taskName = "熱危害LINE監聽服務"
 
 $action = New-ScheduledTaskAction -Execute "powershell.exe" `
     -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$scriptPath`""
-$trigger = New-ScheduledTaskTrigger -AtLogOn
+$currentUser = "$env:USERDOMAIN\$env:USERNAME"
+# 觸發器與執行身分都綁定「目前這個使用者」：沒指定使用者的話等於「任何人登入都觸發」，
+# Windows 會要求系統管理員權限才能註冊（會出現「存取被拒」）
+$trigger = New-ScheduledTaskTrigger -AtLogOn -User $currentUser
+$principal = New-ScheduledTaskPrincipal -UserId $currentUser -LogonType Interactive
 $settings = New-ScheduledTaskSettingsSet `
     -StartWhenAvailable `
     -DontStopOnIdleEnd `
@@ -30,7 +34,7 @@ $settings = New-ScheduledTaskSettingsSet `
     -RestartInterval (New-TimeSpan -Minutes 1)
 
 Register-ScheduledTask -TaskName $taskName `
-    -Action $action -Trigger $trigger -Settings $settings `
+    -Action $action -Trigger $trigger -Principal $principal -Settings $settings `
     -Description "登入時自動啟動 ngrok + line_webhook_listener.py，等待LINE群組關鍵字「熱危害」觸發截圖流程" `
     -Force
 
