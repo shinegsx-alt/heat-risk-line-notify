@@ -47,8 +47,8 @@ Start-Sleep -Seconds 3
 Write-Host "啟動 line_webhook_listener.py ..."
 # 用 cmd 開視窗才能設定視窗標題；-u 讓輸出即時顯示
 Start-Process -FilePath "cmd.exe" `
-    -ArgumentList "/k", "title LINE監聽-熱危害 && python -u `"$listenerScript`"" `
+    -ArgumentList "/k", "title LINE監聽-照片轉傳 && python -u `"$listenerScript`"" `
     -WorkingDirectory $repoDir `
     -WindowStyle Normal
 
-Write-Host "都啟動了：ngrok 和「LINE監聽-熱危害」各一個視窗，關掉視窗就會停止服務。"
+Write-Host "都啟動了：ngrok 和「LINE監聽-照片轉傳」各一個視窗，關掉視窗就會停止服務。"

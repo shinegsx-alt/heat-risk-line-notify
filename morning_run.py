@@ -31,6 +31,8 @@ HEAT_RESULT_PATH = REPO_DIR / "heat_result.txt"
 LINE_TARGET_PATH = REPO_DIR / "line_target.txt"
 
 TARGET_GROUP_NAME = "宜陽巡路隊"
+# 暫時停用每天 07:00 的熱危害推播；排程照常觸發，但一啟動就直接結束。要恢復改回 True
+MORNING_ENABLED = False
 # 剛好有群組觸發的流程在跑時，最多等這麼久再放棄（截圖+推播一輪約 2～3 分鐘）
 LOCK_WAIT_SECONDS = 10 * 60
 # 跑完後視窗停留多久自動關閉（期間按任意鍵可以立刻關閉）
@@ -150,6 +152,9 @@ if __name__ == "__main__":
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8")
     dry_run = "--dry-run" in sys.argv
+    if not MORNING_ENABLED:
+        print("熱危害 07:00 推播暫時停用（morning_run.py 的 MORNING_ENABLED = False），不執行")
+        sys.exit(0)
     os.system(f"title 熱危害 07:00 推播 - {TARGET_GROUP_NAME}")
 
     LOG_DIR.mkdir(exist_ok=True)

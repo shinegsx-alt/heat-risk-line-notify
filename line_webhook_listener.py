@@ -25,14 +25,19 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from flask import Flask, request
+from flask import Flask, abort, request, send_file
 
 import line_groups
+import photo_relay
 from run_lock import RunLock
 from send_line_text import send_line_text
 
 REPO_DIR = Path(__file__).resolve().parent
 TRIGGER_KEYWORD = "熱危害"
+# 暫時關閉「熱危害」關鍵字觸發；要恢復改回 True
+HEAT_RISK_ENABLED = False
+# 宜陽巡路隊照片轉傳（見 photo_relay.py）
+PHOTO_RELAY_ENABLED = True
 # 這些群組打關鍵字不會觸發（用 line_groups.json 對映表裡的群組名稱比對）
 IGNORED_GROUP_NAMES = {"宜陽巡路隊"}
 LOG_DIR = REPO_DIR / "logs"
@@ -127,10 +132,20 @@ def callback():
         if event.get("type") != "message":
             continue
         message = event.get("message", {})
+        if message.get("type") == "image":
+            if PHOTO_RELAY_ENABLED:
+                try:
+                    photo_relay.handle_event(event)
+                except Exception as e:
+                    print(f"照片轉傳處理失敗: {e!r}")
+            continue
         if message.get("type") != "text":
             continue
 
         text = message.get("text", "")
+        if TRIGGER_KEYWORD in text and not HEAT_RISK_ENABLED:
+            print(f"收到關鍵字「{TRIGGER_KEYWORD}」，但熱危害功能暫時關閉，略過")
+            continue
         if TRIGGER_KEYWORD in text:
             source = event.get("source", {})
             # 群組 → groupId、多人聊天室 → roomId、私訊 → userId，結果就推播回同一個地方
@@ -145,11 +160,29 @@ def callback():
     return "OK", 200
 
 
+@app.route("/relay/<token>/<name>", methods=["GET"])
+def relay_photo(token, name):
+    """照片轉傳推播用：LINE 伺服器從這裡抓圖（隨機網址，一天後刪除）"""
+    path = photo_relay.served_file(token, name)
+    if path is None:
+        abort(404)
+    return send_file(path, mimetype="image/jpeg")
+
+
 @app.route("/", methods=["GET"])
 def health():
     return "line_webhook_listener is running", 200
 
 
 if __name__ == "__main__":
-    print(f"監聽關鍵字「{TRIGGER_KEYWORD}」，等待 LINE Webhook 呼叫 /callback ...")
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if HEAT_RISK_ENABLED:
+        print(f"監聽關鍵字「{TRIGGER_KEYWORD}」")
+    else:
+        print("熱危害關鍵字觸發：暫時關閉")
+    if PHOTO_RELAY_ENABLED:
+        print(f"照片轉傳：「{photo_relay.SOURCE_GROUP_NAME}」一次 3 張、紅字含「{photo_relay.REQUIRED_KEYWORD}」"
+              f" → 群組 {photo_relay.TARGET_GROUP_ID}")
+    print("等待 LINE Webhook 呼叫 /callback ...")
     app.run(host="0.0.0.0", port=5000)
