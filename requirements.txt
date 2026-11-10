@@ -1,2 +1,5 @@
 playwright
 requests
+flask
+anthropic
+Pillow
