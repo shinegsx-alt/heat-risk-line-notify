@@ -1,5 +1,5 @@
 """
-「宜陽巡路隊」照片轉傳：紅字含「礁溪」的 3 張照片 + 1 張天氣相符的 LED 燈車照片 → 目標群組
+「宜陽巡路隊」照片轉傳：紅字含「礁溪」的 3 張照片 + 1 張天氣相符的照片 → 目標群組
 
 流程（listener 收到圖片事件時呼叫 handle_event）：
   1. 只處理來源群組（宜陽巡路隊）裡「一次選 3 張」送出的照片（LINE 事件的 imageSet.total == 3）
@@ -8,10 +8,10 @@
      a. 本機紅色預檢：3 張左上角都要有紅字
      b. Claude Haiku：讀紅字 + 判斷天氣；紅字要有「礁溪」
      c. 天氣：戶外照片的判斷，依 雨 > 陰 > 晴（多雲當晴）取一個
-     d. 到 WEATHER_ROOT 底下名稱含「未選用」+ 天氣字（晴/陰/雨）的資料夾挑一張
+     d. 到 WEATHER_ROOT（OneDrive\\圖片\\line未使用 - cloude）的 晴/陰/雨 子資料夾挑一張
         （優先挑沒有 MMDD. 日期前綴的）
      e. 3 張原圖 + 天氣照片放進 OneDrive\\圖片\\<民國日期 1151110>\\，天氣照片是「移動」過去
-        （從未選用資料夾移除）
+        （從 line未使用 資料夾移除）
      f. 4 張圖由 listener 經 ngrok 網址提供（/relay/<隨機碼>/<n>.jpg），一次 push 到目標群組
   找不到相符天氣照片、或判斷不出天氣時，只傳 3 張並在 log 記錄。
 
@@ -50,8 +50,8 @@ PHOTOS_PER_SET = 3
 MODEL = "claude-haiku-5-5"
 
 PICTURES_DIR = Path(r"C:\Users\Owner\OneDrive\圖片")
-WEATHER_ROOT = PICTURES_DIR / "115礁溪巡查LED燈車"
-UNUSED_MARK = "未選用"
+# 未使用的天氣照片：底下分 晴、陰、雨 子資料夾，挑走的照片會移出這裡
+WEATHER_ROOT = PICTURES_DIR / "line未使用 - cloude"
 # Claude 判斷的天氣 → 資料夾名稱要含的字
 WEATHER_FOLDER_WORD = {"晴": "晴", "多雲": "晴", "陰": "陰", "雨": "雨"}
 WEATHER_PRIORITY = ["雨", "陰", "晴"]  # 3 張判斷不一致時，取最「濕」的
@@ -196,11 +196,10 @@ def combine_weather(results: list[dict]) -> str:
 
 
 def find_weather_photo(weather: str) -> Path | None:
-    """在 WEATHER_ROOT 底下找名稱含「未選用」和天氣字的資料夾，挑一張（優先沒有日期前綴的）"""
+    """在 WEATHER_ROOT 底下找名稱含天氣字（晴/陰/雨）的資料夾，挑一張（優先沒有日期前綴的）"""
     if not weather or not WEATHER_ROOT.exists():
         return None
-    folders = sorted(d for d in WEATHER_ROOT.rglob("*")
-                     if d.is_dir() and UNUSED_MARK in d.name and weather in d.name)
+    folders = sorted(d for d in WEATHER_ROOT.rglob("*") if d.is_dir() and weather in d.name)
     candidates = [f for d in folders for f in sorted(d.iterdir())
                   if f.is_file() and f.suffix.lower() in IMAGE_SUFFIXES
                   and not f.name.startswith(".trashed")]
@@ -237,7 +236,7 @@ def process_set(paths: list[Path], *, weather_override: str = "",
     if not weather:
         log("  判斷不出天氣（沒有戶外照片），只傳 3 張")
     elif weather_photo is None:
-        log(f"  找不到「{weather}」的未選用照片，只傳 3 張")
+        log(f"  找不到「{weather}」的未使用照片，只傳 3 張")
     else:
         log(f"  天氣 {weather} → 挑選 {weather_photo.relative_to(WEATHER_ROOT)}")
 
@@ -255,7 +254,7 @@ def process_set(paths: list[Path], *, weather_override: str = "",
         final.append(dest)
     if weather_photo is not None:
         dest = unique_path(out_dir / weather_photo.name)
-        shutil.move(str(weather_photo), dest)  # 從未選用資料夾移除
+        shutil.move(str(weather_photo), dest)  # 從 line未使用 資料夾移除
         final.append(dest)
     log(f"  已存到 {out_dir}：{', '.join(f.name for f in final)}")
 
