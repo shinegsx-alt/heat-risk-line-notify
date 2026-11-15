@@ -21,6 +21,8 @@
 > - 4 張存到 `OneDrive\圖片\<民國日期 1151110>\`，天氣照片從 line未使用 資料夾**移動**過去
 > - listener 用 `/relay/<隨機碼>/<n>.jpg` 經 ngrok 提供圖片，push 到群組 `C61fd8276de5c3224cc772c3763768de5`
 > - 本機需要 `line_token.txt`（下載照片、推播都要用）
+> - **測試中**：目標群組 `C61fd...` 也列在 `SOURCE_GROUP_IDS`，在那裡傳 3 張也會觸發；測完要拿掉。
+>   處理過的 imageSet.id 記在 `photo_relay_data/done_sets.txt`，重送事件不會重做
 
 ## 目前進度
 

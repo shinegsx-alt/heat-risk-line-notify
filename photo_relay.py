@@ -42,9 +42,13 @@ REPO_DIR = Path(__file__).resolve().parent
 
 # ---- 設定 ----
 SOURCE_GROUP_NAME = "宜陽巡路隊"
-# 宜陽巡路隊的 Group ID（line_groups.json 查不到名稱時用這個比對）
-SOURCE_GROUP_IDS = {"C39b294f05263f6b0b70a06b5238148d6"}
 TARGET_GROUP_ID = "C61fd8276de5c3224cc772c3763768de5"
+SOURCE_GROUP_IDS = {
+    "C39b294f05263f6b0b70a06b5238148d6",  # 宜陽巡路隊（line_groups.json 查不到名稱時用這個比對）
+    TARGET_GROUP_ID,                      # 測試用：在目標群組傳 3 張也會觸發，測完拿掉這行
+}
+# bot 自己 push 的圖片不會產生 Webhook 事件，所以推播到目標群組不會再觸發自己；
+# 另外用「處理過的 imageSet.id / message.id」擋掉 LINE 重送或重複收到的事件
 REQUIRED_KEYWORD = "礁溪"
 PHOTOS_PER_SET = 3
 MODEL = "claude-haiku-5-5"
@@ -60,6 +64,7 @@ DATA_DIR = REPO_DIR / "photo_relay_data"  # 已在 .gitignore（工人照片不�
 INCOMING_DIR = DATA_DIR / "incoming"
 SERVE_DIR = DATA_DIR / "serve"
 LOG_PATH = DATA_DIR / "relay.log"
+DONE_SETS_PATH = DATA_DIR / "done_sets.txt"  # 已處理的 imageSet.id，listener 重開後也不會重做
 NGROK_DOMAIN_PATH = REPO_DIR / "ngrok_domain.txt"
 
 INCOMPLETE_SET_TIMEOUT = timedelta(minutes=10)  # 3 張沒到齊，超過這個時間就丟掉
@@ -71,6 +76,22 @@ DATE_PREFIX_RE = re.compile(r"^\d{4}\.\s*")  # 例如「1029.IMG2026...」「102
 
 _lock = threading.Lock()
 _pending: dict[str, dict] = {}  # imageSet.id → {"created", "total", "files": {index: Path}, "user"}
+_seen_messages: set[str] = set()  # 收過的 message.id（擋 Webhook 重送）
+_done_sets: set[str] | None = None  # 已處理的 imageSet.id（延遲從檔案載入）
+
+
+def _load_done_sets() -> set[str]:
+    global _done_sets
+    if _done_sets is None:
+        _done_sets = set(DONE_SETS_PATH.read_text(encoding="utf-8").split()) if DONE_SETS_PATH.exists() else set()
+    return _done_sets
+
+
+def _mark_done(set_id: str) -> None:
+    _load_done_sets().add(set_id)
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    with open(DONE_SETS_PATH, "a", encoding="utf-8") as f:
+        f.write(set_id + "\n")
 
 
 def log(msg: str) -> None:
@@ -105,6 +126,11 @@ def handle_event(event: dict) -> None:
     if not image_set or image_set.get("total") != PHOTOS_PER_SET:
         log(f"來源群組收到照片，但不是一次選 {PHOTOS_PER_SET} 張（imageSet={image_set}），略過")
         return
+    with _lock:
+        if message["id"] in _seen_messages or image_set["id"] in _load_done_sets():
+            log(f"重複的照片事件（set {image_set['id'][:8]} 第 {image_set.get('index')} 張），略過")
+            return
+        _seen_messages.add(message["id"])
     threading.Thread(
         target=_download_and_collect,
         args=(message["id"], image_set, source.get("userId", "")),
@@ -127,9 +153,10 @@ def _download_and_collect(message_id: str, image_set: dict, user_id: str) -> Non
         )
         entry["files"][index] = path
         log(f"收到照片 set {set_id[:8]} 第 {index}/{total} 張")
-        if len(entry["files"]) == total:
+        if len(entry["files"]) == total and set_id not in _load_done_sets():
             ready = [entry["files"][i] for i in sorted(entry["files"])]
             del _pending[set_id]
+            _mark_done(set_id)  # 先記下來再處理，處理途中再收到同一組也不會重做
     if ready:
         try:
             process_set(ready)
