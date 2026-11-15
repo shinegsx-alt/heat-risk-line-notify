@@ -7,7 +7,7 @@
   3. 3 張到齊後另開執行緒處理：
      a. 本機紅色預檢：3 張左上角都要有紅字
      b. Claude Haiku：讀紅字 + 判斷天氣；紅字要有「礁溪」
-     c. 天氣：戶外照片的判斷，依 雨 > 陰 > 晴（多雲當晴）取一個
+     c. 天氣：戶外照片的判斷多數決（多雲當晴）；票數相同時取較「濕」的（雨 > 陰 > 晴）
      d. 到 WEATHER_ROOT（OneDrive\\圖片\\line未使用 - cloude）的 晴/陰/雨 子資料夾挑一張
         （優先挑沒有 MMDD. 日期前綴的）
      e. 3 張原圖 + 天氣照片放進 OneDrive\\圖片\\<民國日期 1151110>\\，天氣照片是「移動」過去
@@ -54,7 +54,7 @@ PICTURES_DIR = Path(r"C:\Users\Owner\OneDrive\圖片")
 WEATHER_ROOT = PICTURES_DIR / "line未使用 - cloude"
 # Claude 判斷的天氣 → 資料夾名稱要含的字
 WEATHER_FOLDER_WORD = {"晴": "晴", "多雲": "晴", "陰": "陰", "雨": "雨"}
-WEATHER_PRIORITY = ["雨", "陰", "晴"]  # 3 張判斷不一致時，取最「濕」的
+WEATHER_PRIORITY = ["雨", "陰", "晴"]  # 多數決票數相同時，取較「濕」的
 
 DATA_DIR = REPO_DIR / "photo_relay_data"  # 已在 .gitignore（工人照片不能進公開 repo）
 INCOMING_DIR = DATA_DIR / "incoming"
@@ -190,9 +190,12 @@ def analyze(paths: list[Path], client) -> tuple[bool, str, list[dict]]:
 
 
 def combine_weather(results: list[dict]) -> str:
-    words = {WEATHER_FOLDER_WORD[r["weather"]] for r in results
-             if r.get("is_outdoor") and r.get("weather") in WEATHER_FOLDER_WORD}
-    return next((w for w in WEATHER_PRIORITY if w in words), "")
+    """戶外照片的天氣多數決；票數相同時依 WEATHER_PRIORITY 取較濕的；沒有戶外判斷回傳空字串"""
+    votes = [WEATHER_FOLDER_WORD[r["weather"]] for r in results
+             if r.get("is_outdoor") and r.get("weather") in WEATHER_FOLDER_WORD]
+    if not votes:
+        return ""
+    return max(WEATHER_PRIORITY, key=lambda w: (votes.count(w), -WEATHER_PRIORITY.index(w)))
 
 
 def find_weather_photo(weather: str) -> Path | None:
