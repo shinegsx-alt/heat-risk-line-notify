@@ -7,7 +7,8 @@
   3. 3 張到齊後另開執行緒處理：
      a. 本機紅色預檢：3 張左上角都要有紅字
      b. Claude Haiku：讀紅字 + 判斷天氣；紅字要有「礁溪」
-     c. 天氣：戶外照片的判斷多數決（多雲當晴）；票數相同時取較「濕」的（雨 > 陰 > 晴）
+     c. 天氣：依序判讀，第一張戶外照片的天氣就是這組的天氣（多雲當晴）；
+        找到之後，後面的照片只讀紅字、不再判讀天氣
      d. 到 WEATHER_ROOT（OneDrive\\圖片\\line未使用 - cloude）的 晴/陰/雨 子資料夾挑一張
         （優先挑沒有 MMDD. 日期前綴的）
      e. 3 張原圖 + 天氣照片放進 OneDrive\\圖片\\<民國日期 1151110>\\，天氣照片是「移動」過去
@@ -58,7 +59,6 @@ PICTURES_DIR = Path(r"C:\Users\Owner\OneDrive\圖片")
 WEATHER_ROOT = PICTURES_DIR / "line未使用 - cloude"
 # Claude 判斷的天氣 → 資料夾名稱要含的字
 WEATHER_FOLDER_WORD = {"晴": "晴", "多雲": "晴", "陰": "陰", "雨": "雨"}
-WEATHER_PRIORITY = ["雨", "陰", "晴"]  # 多數決票數相同時，取較「濕」的
 
 DATA_DIR = REPO_DIR / "photo_relay_data"  # 已在 .gitignore（工人照片不能進公開 repo）
 INCOMING_DIR = DATA_DIR / "incoming"
@@ -193,19 +193,44 @@ def download_line_image(message_id: str, folder: Path, name: str) -> Path:
 
 
 # ---------------------------------------------------------------- 處理一組
+# 已經從戶外照片判斷出天氣後，其餘照片只讀紅字
+RED_ONLY_PROMPT = """這是一張工地照片。有些照片的左上角會疊上紅色的文字浮水印
+（例如拍攝時間、經緯度座標、工程名稱）。只抄出左上角「紅色」的文字：
+- 一行一筆，照畫面上的換行，原樣抄寫，不要修正、不要補字
+- 黑色、白色或其他顏色的字（例如紙本表格上的印刷字、招牌字）都不要
+- 如果沒有紅色文字，has_red_text 回 false，lines 回空陣列"""
+RED_ONLY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "has_red_text": {"type": "boolean"},
+        "lines": {"type": "array", "items": {"type": "string"}},
+    },
+    "required": ["has_red_text", "lines"],
+    "additionalProperties": False,
+}
+
+
 def analyze(paths: list[Path], client) -> tuple[bool, str, list[dict]]:
-    """回傳 (是否要轉傳, 天氣或空字串, 每張的辨識結果)"""
+    """回傳 (是否要轉傳, 天氣或空字串, 每張的辨識結果)。
+    天氣取第一張戶外照片的判斷；判斷出來後，其餘照片只讀紅字"""
     results = []
+    weather = ""
     for p in paths:
         img = Image.open(p)
         ratio, _ = red_ratio(crop_top(img, 0.25))
         if ratio < RED_MIN_RATIO:
             log(f"  {p.name}：左上角沒有紅字（紅色 {ratio:.2%}），整組略過")
             return False, "", results
-        r = ask_claude(client, MODEL, img)
+        if weather:
+            r = ask_claude(client, MODEL, img, RED_ONLY_PROMPT, RED_ONLY_SCHEMA)
+            log(f"  {p.name}：紅字={r.get('lines')}（天氣已判斷，不再判讀）{r['_usage']}")
+        else:
+            r = ask_claude(client, MODEL, img)
+            log(f"  {p.name}：紅字={r.get('lines')} 天氣={r.get('weather')}"
+                f"（{'戶外' if r.get('is_outdoor') else '室內'}）{r['_usage']}")
+            if r.get("is_outdoor") and r.get("weather") in WEATHER_FOLDER_WORD:
+                weather = WEATHER_FOLDER_WORD[r["weather"]]
         results.append(r)
-        log(f"  {p.name}：紅字={r.get('lines')} 天氣={r.get('weather')}"
-            f"（{'戶外' if r.get('is_outdoor') else '室內'}）{r['_usage']}")
         if not r.get("has_red_text"):
             log(f"  {p.name}：Claude 判定沒有紅字，整組略過")
             return False, "", results
@@ -213,16 +238,7 @@ def analyze(paths: list[Path], client) -> tuple[bool, str, list[dict]]:
     if not any(REQUIRED_KEYWORD in "".join(r.get("lines", [])) for r in results):
         log(f"  紅字裡沒有「{REQUIRED_KEYWORD}」，整組略過")
         return False, "", results
-    return True, combine_weather(results), results
-
-
-def combine_weather(results: list[dict]) -> str:
-    """戶外照片的天氣多數決；票數相同時依 WEATHER_PRIORITY 取較濕的；沒有戶外判斷回傳空字串"""
-    votes = [WEATHER_FOLDER_WORD[r["weather"]] for r in results
-             if r.get("is_outdoor") and r.get("weather") in WEATHER_FOLDER_WORD]
-    if not votes:
-        return ""
-    return max(WEATHER_PRIORITY, key=lambda w: (votes.count(w), -WEATHER_PRIORITY.index(w)))
+    return True, weather, results
 
 
 def find_weather_photo(weather: str) -> Path | None:
@@ -296,8 +312,8 @@ def process_set(paths: list[Path], *, weather_override: str = "",
 
 # ---------------------------------------------------------------- 經 ngrok 提供 + 推播
 def prepare_served(paths: list[Path]) -> list[str]:
-    """把照片轉成 LINE 規格（原圖 ≤10MB、預覽 ≤1MB）放到隨機資料夾，
-    回傳每張的網址前綴（加 .jpg 是原圖、加 _p.jpg 是預覽）"""
+    """把照片轉成 LINE 規格（≤10MB）放到隨機資料夾，回傳每張的網址
+    （原圖和預覽圖都用這個網址）"""
     cleanup_served()
     domain = NGROK_DOMAIN_PATH.read_text(encoding="utf-8").strip()
     if not domain:
@@ -307,12 +323,9 @@ def prepare_served(paths: list[Path]) -> list[str]:
     folder.mkdir(parents=True, exist_ok=True)
     for i, p in enumerate(paths, 1):
         img = ImageOps.exif_transpose(Image.open(p)).convert("RGB")
-        big = img.copy()
-        big.thumbnail((4000, 4000))
-        big.save(folder / f"{i}.jpg", quality=88)
-        img.thumbnail((1024, 1024))
-        img.save(folder / f"{i}_p.jpg", quality=80)
-    return [f"https://{domain}/relay/{token}/{i}" for i in range(1, len(paths) + 1)]
+        img.thumbnail((4000, 4000))
+        img.save(folder / f"{i}.jpg", quality=88)
+    return [f"https://{domain}/relay/{token}/{i}.jpg" for i in range(1, len(paths) + 1)]
 
 
 def cleanup_served() -> None:
@@ -326,16 +339,15 @@ def cleanup_served() -> None:
 
 def served_file(token: str, name: str) -> Path | None:
     """listener 的 /relay/<token>/<name> 路由用：只允許 serve 資料夾裡的檔案"""
-    if not re.fullmatch(r"[A-Za-z0-9_-]{10,64}", token) or not re.fullmatch(r"\d+(_p)?\.jpg", name):
+    if not re.fullmatch(r"[A-Za-z0-9_-]{10,64}", token) or not re.fullmatch(r"\d+\.jpg", name):
         return None
     path = SERVE_DIR / token / name
     return path if path.is_file() else None
 
 
 def push_photos(paths: list[Path]) -> None:
-    bases = prepare_served(paths)
-    messages = [{"type": "image", "originalContentUrl": f"{b}.jpg", "previewImageUrl": f"{b}_p.jpg"}
-                for b in bases]
+    urls = prepare_served(paths)
+    messages = [{"type": "image", "originalContentUrl": u, "previewImageUrl": u} for u in urls]
     for start in range(0, len(messages), 5):  # push 一次最多 5 則
         resp = requests.post(
             LINE_PUSH_URL,

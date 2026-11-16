@@ -105,8 +105,9 @@ def load_client():
     return anthropic.Anthropic(api_key=key)
 
 
-def ask_claude(client, model: str, img: Image.Image) -> dict:
-    """送整張照片（判斷天氣要看到天空和地面），長邊超過 1600 就先縮小"""
+def ask_claude(client, model: str, img: Image.Image, prompt: str = PROMPT, schema: dict = SCHEMA) -> dict:
+    """送整張照片（判斷天氣要看到天空和地面），長邊超過 1600 就先縮小；
+    prompt/schema 可換成別的（例如只讀紅字、不判斷天氣）"""
     import json
 
     img = img.convert("RGB")
@@ -118,12 +119,12 @@ def ask_claude(client, model: str, img: Image.Image) -> dict:
     params = dict(
         model=model,
         max_tokens=4000,
-        output_config={"format": {"type": "json_schema", "schema": SCHEMA}},
+        output_config={"format": {"type": "json_schema", "schema": schema}},
         messages=[{
             "role": "user",
             "content": [
                 {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": image_b64}},
-                {"type": "text", "text": PROMPT},
+                {"type": "text", "text": prompt},
             ],
         }],
     )
