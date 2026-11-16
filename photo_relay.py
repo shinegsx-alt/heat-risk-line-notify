@@ -45,7 +45,7 @@ REPO_DIR = Path(__file__).resolve().parent
 SOURCE_GROUP_NAME = "宜陽巡路隊"
 TARGET_GROUP_ID = "C61fd8276de5c3224cc772c3763768de5"
 SOURCE_GROUP_IDS = {
-    "C39b294f05263f6b0b70a06b5238148d6",  # 宜陽巡路隊（line_groups.json 查不到名稱時用這個比對）
+    "C177be5e49810e6aec5af1692fe693da5",  # 宜陽巡路隊（line_groups.json 查不到名稱時用這個比對）
     TARGET_GROUP_ID,                      # 測試用：在目標群組傳 3 張也會觸發，測完拿掉這行
 }
 # bot 自己 push 的圖片不會產生 Webhook 事件，所以推播到目標群組不會再觸發自己；
